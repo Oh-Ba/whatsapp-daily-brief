@@ -61,9 +61,63 @@ Do this **after** the VPS is running (Part 4), because you need the VPS address:
    Method: **POST** → **Save**.
 3. Test: send `HELP` from your WhatsApp to the sandbox number — you should get the command list back.
 
-### 2d. Later: production (optional, when you outgrow the sandbox)
+### 2d. The 24-hour window — why the 08:00 push needs a template
 
-The sandbox needs each user to send the join code and re-join every 72 hours of inactivity. For a permanent setup: in Twilio go to **Messaging → Senders → WhatsApp senders** → register your own number (business verification via Meta, ~1–3 days), then create a **Content Template** ("Your daily brief is ready — reply GET") and put its SID in `.env` as `TWILIO_CONTENT_SID`. The app already knows how to use it.
+**Read this before wondering why nothing arrives at 08:00.** It is a WhatsApp platform rule, not a bug in this app.
+
+WhatsApp allows a business to send **freeform** messages only within **24 hours** of that user's last inbound message. Outside that window, only a **pre-approved template** may start the conversation.
+
+The 08:00 brief is business-initiated and therefore **always** outside the window. So:
+
+| Scenario | Works? |
+|---|---|
+| `npm run send-now` right after the user messaged the bot | ✅ freeform, inside the window |
+| `npm run send-now` a day later | ❌ needs a template |
+| The 08:00 cron push | ❌ **always** needs a template |
+
+`src/whatsapp.js` already implements the correct strategy: try freeform, and on rejection fall back to the approved template in `TWILIO_CONTENT_SID`. With that variable empty, the fallback has nothing to send and the run logs `outside 24h window and no template configured`.
+
+Twilio signals this in two different ways — error **63016**, or a 400 with **`ContentSid Required`**. The app treats both as "window closed."
+
+### 2e. Production setup (required for the 08:00 push to work at all)
+
+The sandbox **cannot** deliver the daily brief. It has no approved templates of your own, and each user must re-join after 72 hours of inactivity. Three steps, in order:
+
+**1. Register a real WhatsApp sender**
+
+Twilio Console → **Messaging → Senders → WhatsApp senders → New sender**. You'll need:
+- A phone number you control that is **not** already on WhatsApp (or delete its WhatsApp account first)
+- A Meta Business account (Twilio walks you through creating one)
+- Business verification — typically **1–3 days**, sometimes longer
+
+When approved, put that number in `.env` (note the `whatsapp:` prefix and E.164 format):
+```
+TWILIO_WHATSAPP_FROM=whatsapp:+972XXXXXXXXX
+```
+
+**2. Create and submit a content template**
+
+Twilio Console → **Messaging → Content Template Builder → Create new**.
+- **Content type:** Text
+- **Template name:** `daily_brief_ready`
+- **Category:** Utility (cheaper than Marketing, and correct here — the user opted in)
+- **Body:** `Your daily brief for {{1}} is ready. Reply GET to receive it.`
+- **Sample for {{1}}:** `Portugal`
+
+Submit for WhatsApp approval. Utility templates usually clear in **minutes to a few hours**. Once approved, copy the SID (starts with `HX`) into `.env`:
+```
+TWILIO_CONTENT_SID=HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+**3. Restart and verify**
+
+```bash
+pm2 restart daily-brief && pm2 logs daily-brief
+```
+
+Expected log on the next push: `window closed — template sent, waiting for user reply`. The user gets the knock, replies `GET`, that opens a fresh 24-hour window, and the webhook delivers the full brief.
+
+> **Cost note:** each template message is a billed WhatsApp *conversation* (roughly $0.005–0.04 depending on country and category). At 10 users daily that is a few dollars a month — check current rates at https://www.twilio.com/en-us/whatsapp/pricing.
 
 ---
 
@@ -145,17 +199,23 @@ npm install -g pm2
 
 ### 4e. Clone the project and configure it
 
-```bash
-cd /opt
-git clone https://github.com/YOUR_USERNAME/whatsapp-daily-brief.git
-# username: YOUR_USERNAME
-# password: paste your github_pat_... token
+Put the token **in the URL**. The interactive password prompt shows nothing as you type and right-click/Ctrl+V often fails to paste over SSH, which produces a misleading `Invalid username or token`:
 
-cd whatsapp-daily-brief
-npm install
-cp .env.example .env
+```bash
+cd /opt && \
+git clone https://YOUR_TOKEN@github.com/YOUR_USERNAME/whatsapp-daily-brief.git && \
+cd whatsapp-daily-brief && \
+git remote set-url origin https://github.com/YOUR_USERNAME/whatsapp-daily-brief.git && \
+npm install && \
+cp .env.example .env && \
 nano .env
 ```
+
+The `set-url` line removes the token from `.git/config`, where cloning writes it in cleartext. Later `git pull`s will then ask for auth again — re-add the token to the URL when deploying, or set up a read-only deploy key.
+
+> Replace **`YOUR_TOKEN`** and **`YOUR_USERNAME`** with real values. Anything in `CAPS_WITH_UNDERSCORES` in this guide is a fill-in-the-blank — pasting it literally creates a remote pointing at a repository that does not exist.
+>
+> Chain the commands with `&&` as shown. Newline-separated commands each run regardless of whether the previous one failed, so one broken clone produces a cascade of unrelated errors that hides the real cause.
 
 In nano, fill in the real values (Anthropic key, Twilio SID/token). Check that `PORT=3580` and `TIMEZONE=Asia/Jerusalem`. Save with **Ctrl+O**, Enter, exit with **Ctrl+X**.
 
@@ -176,6 +236,36 @@ pm2 logs daily-brief   # watch it live; Ctrl+C to stop watching (app keeps runni
 4. Done — the 08:00 push now runs regardless of your laptop.
 
 ---
+
+## Troubleshooting: nothing arrives on WhatsApp
+
+Work top-down. The log line from `pm2 logs daily-brief` (or `npm run send-now`) tells you which case you are in.
+
+| Log line | Meaning | Fix |
+|---|---|---|
+| `error: ContentSid Required` | Twilio refused the freeform send — outside the 24h window | Have the user message the bot, or finish 2e (template) |
+| `outside 24h window and no template configured` | Same cause, correctly detected | Set `TWILIO_CONTENT_SID` — see 2e |
+| `window closed — template sent, waiting for user reply` | Working as designed | User replies `GET` to receive the brief |
+| `error: brief generation failed — ...` | Anthropic side, not Twilio | Check `ANTHROPIC_API_KEY` and credit balance |
+| `Twilio credentials missing` | `.env` not loaded | Confirm `.env` sits next to `package.json` |
+| `No user registered with +...` | Number not in `data/users.json` | Register via the web page, or seed the file |
+| `Brief sent to ... (6 messages)` | Twilio **accepted** it | The problem is delivery — see below |
+
+**If the log says sent but the phone shows nothing**, Twilio accepted the API call and failed to deliver. Twilio Console → **Monitor → Logs → Messaging** is authoritative: find the message and read its status.
+
+- `delivered` — it arrived; check the phone's archived chats and that you're looking at the right WhatsApp account
+- `undelivered` / `failed` — open the message and read the error code
+- `sent` and stuck — usually a sandbox recipient who never joined
+
+Most common causes, in order:
+
+1. **The recipient never joined the sandbox.** Every number must send `join <code>` to +1 415 523 8886 from its own phone — including yours. Without it Twilio may accept the call and silently drop the message.
+2. **The 72-hour sandbox expiry.** Sandbox joins lapse after 72 hours of inactivity and must be redone. This bites regularly during testing.
+3. **Trial-account restriction.** An unupgraded Twilio trial only sends to *verified* numbers — Console → **Phone Numbers → Verified Caller IDs**.
+4. **Wrong `TWILIO_WHATSAPP_FROM`.** Needs the `whatsapp:` prefix and E.164 form: `whatsapp:+14155238886`.
+5. **Number format.** `data/users.json` stores E.164 with no `whatsapp:` prefix — `+972501234567`. The prefix is added in code.
+
+> A Twilio API error means **no message was ever created** — nothing to find in the logs and nothing could have arrived. That is a different failure from an accepted-but-undelivered message, and it is the one to rule out first.
 
 ## Everyday operations cheat sheet
 
