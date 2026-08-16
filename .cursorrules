@@ -1,0 +1,14 @@
+# Cursor rules — The 08:00 Brief (WhatsApp daily country brief)
+
+You are working on a small 24/7 Node.js agent. Read CLAUDE.md first — it is the source of truth for architecture and conventions.
+
+Core rules:
+- Node 18+, ES modules only ("type": "module"). No TypeScript, no build step.
+- Frontend is one self-contained file: public/index.html (inline CSS/JS, no frameworks).
+- All configuration flows through src/config.js reading .env. Never hardcode keys, numbers, or hours.
+- User storage is data/users.json through src/store.js only. Max 10 users is a product requirement — enforce it.
+- Anthropic API is called with raw fetch in src/brief.js, using the web_search_20250305 tool. Keep the <<<SPLIT>>> delimiter contract and the <1000 chars/part constraint (Twilio WhatsApp limit is 1600).
+- Keep the Twilio 63016 template fallback in src/whatsapp.js intact.
+- ACK HTTP/webhook requests immediately; run brief generation async (Twilio webhooks time out at 15s).
+- Mask phone numbers in any API output or new logging.
+- Prefer small, focused diffs. When adding a feature, update README.md and CLAUDE.md in the same change.

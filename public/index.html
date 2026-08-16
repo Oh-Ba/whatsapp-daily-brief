@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The 08:00 Brief — Daily Country Brief on WhatsApp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --mist:#EDF3EE;      /* page background       */
+    --pine:#10322A;      /* ink                   */
+    --leaf:#128C56;      /* primary green         */
+    --leaf-dark:#0C6B41;
+    --amber:#F4A93C;     /* sunrise accent        */
+    --card:#FFFFFF;
+    --line:#C9D8CD;
+    --muted:#5C7269;
+    --danger:#C24A3F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--mist);
+    color:var(--pine);
+    font-family:"Public Sans",system-ui,sans-serif;
+    font-size:16px;line-height:1.55;
+    min-height:100vh;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:32px 20px 80px}
+
+  /* ── header ─────────────────────────────── */
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+  .sun{
+    width:14px;height:14px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%, #FFD98A, var(--amber));
+    display:inline-block;transform:translateY(1px);
+  }
+  h1{
+    font-family:"Bricolage Grotesque",sans-serif;
+    font-weight:800;font-size:clamp(30px,5vw,46px);
+    letter-spacing:-0.02em;
+  }
+  .clock{
+    font-family:"IBM Plex Mono",monospace;
+    color:var(--leaf);font-weight:500;font-size:clamp(30px,5vw,46px);
+  }
+  .tagline{color:var(--muted);max-width:60ch;margin-bottom:36px}
+
+  /* ── two-column layout ───────────────────── */
+  .grid{display:grid;grid-template-columns:5fr 6fr;gap:28px;align-items:start}
+  @media (max-width:860px){.grid{grid-template-columns:1fr}}
+
+  /* ── programme timetable (signature) ─────── */
+  .timetable{
+    background:var(--pine);color:#EAF3ED;border-radius:14px;
+    padding:26px 24px;position:sticky;top:24px;
+  }
+  .timetable h2{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:600;
+    font-size:15px;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--amber);margin-bottom:18px;
+  }
+  .row{
+    display:grid;grid-template-columns:52px 1fr;gap:14px;
+    padding:13px 0;border-top:1px solid rgba(234,243,237,.14);
+  }
+  .row:last-of-type{border-bottom:1px solid rgba(234,243,237,.14)}
+  .row .t{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--amber)}
+  .row .what strong{display:block;font-weight:600;font-size:15px}
+  .row .what span{font-size:13px;color:rgba(234,243,237,.65)}
+  .timetable .note{
+    margin-top:18px;font-size:13px;color:rgba(234,243,237,.65);
+  }
+  .timetable .note code{
+    font-family:"IBM Plex Mono",monospace;color:#EAF3ED;
+    background:rgba(234,243,237,.12);padding:1px 6px;border-radius:5px;font-size:12px;
+  }
+
+  /* ── cards ────────────────────────────────── */
+  .card{
+    background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:26px 24px;margin-bottom:22px;
+  }
+  .card h2{
+    font-family:"Bricolage Grotesque",sans-serif;font-weight:600;
+    font-size:21px;margin-bottom:4px;
+  }
+  .card .sub{color:var(--muted);font-size:14px;margin-bottom:20px}
+
+  label{display:block;font-weight:600;font-size:13.5px;margin:14px 0 6px}
+  input{
+    width:100%;padding:11px 13px;font:inherit;color:var(--pine);
+    border:1.5px solid var(--line);border-radius:9px;background:#FBFDFB;
+    transition:border-color .15s;
+  }
+  input:focus{outline:none;border-color:var(--leaf)}
+  input::placeholder{color:#9AAFA3}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:5px}
+
+  button{
+    font:inherit;font-weight:600;cursor:pointer;border:none;border-radius:9px;
+    transition:background .15s, transform .05s;
+  }
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+  .primary{
+    width:100%;margin-top:22px;padding:13px;
+    background:var(--leaf);color:#fff;font-size:16px;
+  }
+  .primary:hover{background:var(--leaf-dark)}
+  .primary:disabled{background:#9AC7B0;cursor:wait}
+
+  .flash{
+    margin-top:14px;padding:11px 14px;border-radius:9px;font-size:14px;display:none;
+  }
+  .flash.ok{display:block;background:#E2F3E8;color:var(--leaf-dark);border:1px solid #BFE3CC}
+  .flash.err{display:block;background:#FAE7E4;color:var(--danger);border:1px solid #F0C7C1}
+
+  /* ── registered users ─────────────────────── */
+  .count{
+    font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--muted);
+  }
+  .user{
+    border:1px solid var(--line);border-radius:11px;padding:15px 16px;margin-top:12px;
+    display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;
+  }
+  .user .who strong{font-weight:600}
+  .user .who .country{
+    display:inline-block;margin-left:8px;padding:2px 10px;border-radius:99px;
+    background:#E2F3E8;color:var(--leaf-dark);font-size:13px;font-weight:600;
+  }
+  .user .meta{
+    width:100%;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);
+  }
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .actions button{padding:7px 13px;font-size:13.5px}
+  .send{background:var(--pine);color:#fff}
+  .send:hover{background:#1C4A3E}
+  .ghost{background:transparent;border:1.5px solid var(--line);color:var(--pine)}
+  .ghost:hover{border-color:var(--pine)}
+  .remove{background:transparent;color:var(--danger)}
+  .remove:hover{text-decoration:underline}
+  .empty{color:var(--muted);font-size:14px;padding:18px 0 6px;text-align:center}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="sun" aria-hidden="true"></span>
+    <h1>The <span class="clock">08:00</span> Brief</h1>
+  </header>
+  <p class="tagline">
+    Pick a country, get a WhatsApp briefing every morning: fresh news, the nearest holiday,
+    a mini language lesson, geography, and real prices in the capital. Change country any time.
+  </p>
+
+  <div class="grid">
+
+    <!-- signature: the daily programme timetable -->
+    <aside class="timetable" aria-label="What arrives every morning">
+      <h2>Every morning · your country</h2>
+      <div class="row"><div class="t">08:00</div><div class="what"><strong>📰 The news</strong><span>Politics · economics · tech · culture · crime · one curiosity</span></div></div>
+      <div class="row"><div class="t">08:00</div><div class="what"><strong>🎉 Nearest holiday</strong><span>What it means, its ceremonies, and how it's celebrated locally</span></div></div>
+      <div class="row"><div class="t">08:01</div><div class="what"><strong>🗣️ Language corner</strong><span>A short everyday dialogue — café, taxi, shopping, small talk</span></div></div>
+      <div class="row"><div class="t">08:01</div><div class="what"><strong>🗺️ Geography</strong><span>A few sentences on the land, the climate, one surprise</span></div></div>
+      <div class="row"><div class="t">08:02</div><div class="what"><strong>💰 Prices in the capital</strong><span>Coffee · restaurant · apartment rent · a car</span></div></div>
+      <p class="note">
+        From WhatsApp you can always reply <code>STATUS</code> to get the brief again,
+        or <code>COUNTRY Italy</code> to switch.
+      </p>
+    </aside>
+
+    <div>
+      <!-- registration -->
+      <section class="card" aria-labelledby="reg-title">
+        <h2 id="reg-title">Subscribe a number</h2>
+        <p class="sub">One country per number. Registering an existing number updates its country.</p>
+
+        <label for="name">Name</label>
+        <input id="name" placeholder="Inigo" autocomplete="name">
+
+        <label for="country">Country</label>
+        <input id="country" placeholder="Greece">
+        <p class="hint">Any country — the brief adapts to its language, holidays and capital.</p>
+
+        <label for="whatsapp">WhatsApp number</label>
+        <input id="whatsapp" placeholder="+972501234567" inputmode="tel" autocomplete="tel">
+        <p class="hint">International format, starting with “+”.</p>
+
+        <button class="primary" id="registerBtn">Start my daily brief</button>
+        <div class="flash" id="regFlash" role="status"></div>
+      </section>
+
+      <!-- registered users -->
+      <section class="card" aria-labelledby="users-title">
+        <h2 id="users-title">Subscribers <span class="count" id="count"></span></h2>
+        <p class="sub">Send a brief on demand, switch a country, or remove a number.</p>
+        <div id="userList"><p class="empty">Loading…</p></div>
+      </section>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function flash(el, msg, ok) {
+  el.textContent = msg;
+  el.className = "flash " + (ok ? "ok" : "err");
+}
+
+async function api(path, options) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+/* ── register ─────────────────────────────── */
+$("registerBtn").addEventListener("click", async () => {
+  const btn = $("registerBtn");
+  btn.disabled = true;
+  try {
+    const data = await api("/api/register", {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("name").value,
+        country: $("country").value,
+        whatsapp: $("whatsapp").value,
+      }),
+    });
+    flash($("regFlash"), data.message, true);
+    $("name").value = ""; $("country").value = ""; $("whatsapp").value = "";
+    loadUsers();
+  } catch (err) {
+    flash($("regFlash"), err.message, false);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ── users list ───────────────────────────── */
+async function loadUsers() {
+  try {
+    const { users, max } = await api("/api/users");
+    $("count").textContent = `${users.length} / ${max}`;
+    const list = $("userList");
+    if (!users.length) {
+      list.innerHTML = '<p class="empty">No subscribers yet — the first brief is one form away.</p>';
+      return;
+    }
+    list.innerHTML = users.map((u) => `
+      <div class="user" data-id="${u.id}">
+        <div class="who">
+          <strong>${escapeHtml(u.name)}</strong>
+          <span class="country">${escapeHtml(u.country)}</span>
+        </div>
+        <div class="actions">
+          <button class="send" data-act="send">Send brief now</button>
+          <button class="ghost" data-act="country">Change country</button>
+          <button class="remove" data-act="remove">Remove</button>
+        </div>
+        <div class="meta">
+          ${escapeHtml(u.whatsapp)} · last sent: ${u.lastSentAt ? new Date(u.lastSentAt).toLocaleString() : "never"}${u.lastStatus ? " · " + escapeHtml(u.lastStatus) : ""}
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    $("userList").innerHTML = `<p class="empty">Couldn't load subscribers: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+$("userList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const id = btn.closest(".user").dataset.id;
+  const act = btn.dataset.act;
+  btn.disabled = true;
+  try {
+    if (act === "send") {
+      const data = await api(`/api/users/${id}/send`, { method: "POST" });
+      flash($("regFlash"), data.message, true);
+    } else if (act === "country") {
+      const country = prompt("New country for this subscriber:");
+      if (country) {
+        const data = await api(`/api/users/${id}/country`, {
+          method: "POST",
+          body: JSON.stringify({ country }),
+        });
+        flash($("regFlash"), data.message, true);
+      }
+    } else if (act === "remove") {
+      if (confirm("Remove this subscriber? They will stop receiving briefs.")) {
+        const data = await api(`/api/users/${id}`, { method: "DELETE" });
+        flash($("regFlash"), data.message, true);
+      }
+    }
+    loadUsers();
+  } catch (err) {
+    flash($("regFlash"), err.message, false);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+loadUsers();
+setInterval(loadUsers, 30000); // refresh statuses
+</script>
+</body>
+</html>
