@@ -84,11 +84,13 @@ export async function sendBriefToUser(user) {
     console.log(`[whatsapp] Brief sent to ${user.name} (${messages.length} messages)`);
     return status;
   } catch (err) {
-    // 63016 = freeform message outside the 24h session window.
-    // Twilio may reject the same situation with a "ContentSid Required"
-    // 400 instead of 63016, so treat both as "window closed".
+    // 63016 = freeform message outside the 24h session window (sandbox).
+    // 21654 = "ContentSid Required" — what a production WhatsApp sender
+    // returns for the same situation: business-initiated sends must use
+    // an approved template. Treat both as "window closed".
     const outsideWindow =
       err?.code === 63016 ||
+      err?.code === 21654 ||
       /63016/.test(String(err?.message)) ||
       /ContentSid Required/i.test(String(err?.message));
     if (outsideWindow) {

@@ -243,7 +243,7 @@ Work top-down. The log line from `pm2 logs daily-brief` (or `npm run send-now`) 
 
 | Log line | Meaning | Fix |
 |---|---|---|
-| `error: ContentSid Required` | Twilio refused the freeform send — outside the 24h window | Have the user message the bot, or finish 2e (template) |
+| `error: ContentSid Required` (code **21654**) | Production sender, no template — business-initiated sends need one | Have the user message the bot first, or finish 2e step 2 |
 | `outside 24h window and no template configured` | Same cause, correctly detected | Set `TWILIO_CONTENT_SID` — see 2e |
 | `window closed — template sent, waiting for user reply` | Working as designed | User replies `GET` to receive the brief |
 | `error: brief generation failed — ...` | Anthropic side, not Twilio | Check `ANTHROPIC_API_KEY` and credit balance |
