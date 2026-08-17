@@ -247,6 +247,7 @@ Work top-down. The log line from `pm2 logs daily-brief` (or `npm run send-now`) 
 | `outside 24h window and no template configured` | Same cause, correctly detected | Set `TWILIO_CONTENT_SID` — see 2e |
 | `window closed — template sent, waiting for user reply` | Working as designed | User replies `GET` to receive the brief |
 | `error: brief generation failed — ...` | Anthropic side, not Twilio | Check `ANTHROPIC_API_KEY` and credit balance |
+| `No Twilio trial phone number is assigned...verified recipient` | Account still on trial — recipient not verified | Verify the number, or upgrade the account (below) |
 | `Twilio credentials missing` | `.env` not loaded | Confirm `.env` sits next to `package.json` |
 | `No user registered with +...` | Number not in `data/users.json` | Register via the web page, or seed the file |
 | `Brief sent to ... (6 messages)` | Twilio **accepted** it | The problem is delivery — see below |
@@ -261,7 +262,8 @@ Most common causes, in order:
 
 1. **The recipient never joined the sandbox.** Every number must send `join <code>` to +1 415 523 8886 from its own phone — including yours. Without it Twilio may accept the call and silently drop the message.
 2. **The 72-hour sandbox expiry.** Sandbox joins lapse after 72 hours of inactivity and must be redone. This bites regularly during testing.
-3. **Trial-account restriction.** An unupgraded Twilio trial only sends to *verified* numbers — Console → **Phone Numbers → Verified Caller IDs**.
+3. **Trial-account restriction.** An unupgraded Twilio trial only sends to *verified* numbers — Console → **Phone Numbers → Manage → Verified Caller IDs → Add a new Caller ID**. Twilio calls or texts a 6-digit code to that number; enter it to verify.
+   **This does not scale.** Every one of your 10 users would have to be verified individually, and trial credit is capped. Upgrade the account (Console → **Billing → Upgrade**, add a payment method) before going live — it removes the restriction entirely and is a prerequisite for the 08:00 push reaching anyone who isn't you.
 4. **Wrong `TWILIO_WHATSAPP_FROM`.** Needs the `whatsapp:` prefix and E.164 form: `whatsapp:+14155238886`.
 5. **Number format.** `data/users.json` stores E.164 with no `whatsapp:` prefix — `+972501234567`. The prefix is added in code.
 
