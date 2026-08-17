@@ -5,11 +5,13 @@ This guide takes you from zero to a 24/7 agent running on a cheap VPS, independe
 | Service | What it does here | Cost |
 |---|---|---|
 | **Anthropic (Claude API)** | Writes the daily brief with live web search | Pay per use, ~a few $/month for 10 users |
-| **Twilio** | Sends/receives the WhatsApp messages | Free sandbox; ~$0.005–0.05 per message in production |
+| **Gmail (SMTP)** | Delivers the brief to each subscriber's inbox | Free |
 | **GitHub** | Moves your code from laptop → VPS, keeps it versioned | Free (private repo) |
 | **Hetzner (VPS)** | Runs the server 24/7 | ~€5.50/month (CX23) |
 
 The app listens on port **3580** everywhere (local and VPS).
+
+> **Why email and not WhatsApp?** WhatsApp Business requires a Meta business account, identity/business verification, and a Meta-approved message template for any message the business starts. The 08:00 brief is business-initiated by definition, so none of it is optional there. Email has no such gate — no verification, no templates, no per-message cost, no 24-hour reply window.
 
 ---
 
@@ -26,98 +28,44 @@ The app listens on port **3580** everywhere (local and VPS).
 
 ---
 
-## Part 2 — Twilio (WhatsApp)
+## Part 2 — Gmail (sending the mail)
 
-### 2a. Account + credentials
+Gmail won't accept your normal account password over SMTP. You need an **App Password** — a 16-character key that only works for mail sending and can be revoked on its own.
 
-1. Go to **https://www.twilio.com** → **Sign up** (free trial, no card needed to start).
-2. Verify your email and your own phone number when asked.
-3. On the **Console dashboard** (https://console.twilio.com) you'll see **Account SID** (starts with `AC`) and **Auth Token** (click the eye icon to reveal). Copy both — they go into `.env`:
+### 2a. Turn on 2-Step Verification
+
+App passwords don't exist without it.
+
+1. Go to **https://myaccount.google.com/security**.
+2. Under "How you sign in to Google", open **2-Step Verification** and finish the setup.
+
+### 2b. Create the App Password
+
+1. Go to **https://myaccount.google.com/apppasswords** (or Security → search "App passwords").
+2. Enter the name `daily-brief` → **Create**.
+3. Google shows a 16-character code in four groups, e.g. `abcd efgh ijkl mnop`.
+4. Copy it and **remove the spaces** — it goes into `.env` as one 16-character string:
    ```
-   TWILIO_ACCOUNT_SID=AC...
-   TWILIO_AUTH_TOKEN=...
+   SMTP_USER=you@gmail.com
+   SMTP_PASS=abcdefghijklmnop
    ```
 
-### 2b. WhatsApp sandbox (free testing channel)
+> The code is shown once. If you lose it, delete the entry and create a new one — no harm done.
 
-1. In the console, left menu: **Messaging → Try it out → Send a WhatsApp message**.
-2. You'll see the sandbox number **+1 415 523 8886** and a join code like `join brown-tiger`.
-3. From **your own WhatsApp**, send that exact join code to +1 415 523 8886. You'll get a confirmation reply.
-4. **Every user you register must do step 3 from their own phone** — that's how the sandbox authorizes recipients (max 10 numbers is fine for the sandbox).
-5. Keep in `.env`:
-   ```
-   TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
-   ```
+### 2c. Verify before sending anything
 
-### 2c. Webhook (lets users send STATUS / COUNTRY commands)
-
-Do this **after** the VPS is running (Part 4), because you need the VPS address:
-
-1. Same sandbox page → **Sandbox settings** tab.
-2. In **"When a message comes in"** put:
-   ```
-   http://YOUR_VPS_IP:3580/webhook/whatsapp
-   ```
-   Method: **POST** → **Save**.
-3. Test: send `HELP` from your WhatsApp to the sandbox number — you should get the command list back.
-
-### 2d. The 24-hour window — why the 08:00 push needs a template
-
-**Read this before wondering why nothing arrives at 08:00.** It is a WhatsApp platform rule, not a bug in this app.
-
-WhatsApp allows a business to send **freeform** messages only within **24 hours** of that user's last inbound message. Outside that window, only a **pre-approved template** may start the conversation.
-
-The 08:00 brief is business-initiated and therefore **always** outside the window. So:
-
-| Scenario | Works? |
-|---|---|
-| `npm run send-now` right after the user messaged the bot | ✅ freeform, inside the window |
-| `npm run send-now` a day later | ❌ needs a template |
-| The 08:00 cron push | ❌ **always** needs a template |
-
-`src/whatsapp.js` already implements the correct strategy: try freeform, and on rejection fall back to the approved template in `TWILIO_CONTENT_SID`. With that variable empty, the fallback has nothing to send and the run logs `outside 24h window and no template configured`.
-
-Twilio signals this in two different ways — error **63016**, or a 400 with **`ContentSid Required`**. The app treats both as "window closed."
-
-### 2e. Production setup (required for the 08:00 push to work at all)
-
-The sandbox **cannot** deliver the daily brief. It has no approved templates of your own, and each user must re-join after 72 hours of inactivity. Three steps, in order:
-
-**1. Register a real WhatsApp sender**
-
-Twilio Console → **Messaging → Senders → WhatsApp senders → New sender**. You'll need:
-- A phone number you control that is **not** already on WhatsApp (or delete its WhatsApp account first)
-- A Meta Business account (Twilio walks you through creating one)
-- Business verification — typically **1–3 days**, sometimes longer
-
-When approved, put that number in `.env` (note the `whatsapp:` prefix and E.164 format):
-```
-TWILIO_WHATSAPP_FROM=whatsapp:+972XXXXXXXXX
-```
-
-**2. Create and submit a content template**
-
-Twilio Console → **Messaging → Content Template Builder → Create new**.
-- **Content type:** Text
-- **Template name:** `daily_brief_ready`
-- **Category:** Utility (cheaper than Marketing, and correct here — the user opted in)
-- **Body:** `Your daily brief for {{1}} is ready. Reply GET to receive it.`
-- **Sample for {{1}}:** `Portugal`
-
-Submit for WhatsApp approval. Utility templates usually clear in **minutes to a few hours**. Once approved, copy the SID (starts with `HX`) into `.env`:
-```
-TWILIO_CONTENT_SID=HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-**3. Restart and verify**
+The check below logs into Gmail without generating a brief, so it costs nothing. Do this **before** `send-now`: a failed `send-now` still bills a full Anthropic call with web search.
 
 ```bash
-pm2 restart daily-brief && pm2 logs daily-brief
+npm run check-mail                      # login only
+npm run check-mail -- you@gmail.com     # login + a one-line test email
 ```
 
-Expected log on the next push: `window closed — template sent, waiting for user reply`. The user gets the knock, replies `GET`, that opens a fresh 24-hour window, and the webhook delivers the full brief.
+`SMTP login OK` means you're done with Google.
 
-> **Cost note:** each template message is a billed WhatsApp *conversation* (roughly $0.005–0.04 depending on country and category). At 10 users daily that is a few dollars a month — check current rates at https://www.twilio.com/en-us/whatsapp/pricing.
+### 2d. Using a provider other than Gmail
+
+Set `SMTP_HOST` and `SMTP_PORT` in `.env`. Port **465** uses implicit TLS, **587** uses STARTTLS — the app picks the right mode from the port number. Everything else is identical.
 
 ---
 
@@ -130,12 +78,10 @@ Expected log on the next push: `window closed — template sent, waiting for use
 
 ### 3b. Push the project from your laptop
 
-In Cursor's terminal, inside `C:\Work\whatsapp-daily-brief`:
-
 ```powershell
 git init
 git add .
-git commit -m "Initial version: daily WhatsApp country brief"
+git commit -m "Initial version"
 git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/whatsapp-daily-brief.git
 git push -u origin main
@@ -143,13 +89,13 @@ git push -u origin main
 
 When Git asks for a password, use a **Personal Access Token**, not your GitHub password:
 
-1. GitHub → click your avatar → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
-2. Name: `daily-brief`, expiration: 90 days (or more), **Repository access**: only `whatsapp-daily-brief`, **Permissions → Contents: Read and write**.
-3. Generate, copy the token (starts with `github_pat_`), and paste it as the password when pushing. Windows will remember it (Git Credential Manager).
+1. GitHub → avatar → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+2. Name: `daily-brief`, expiration: 90 days or more, **Repository access**: only `whatsapp-daily-brief`, **Permissions → Repository → Contents: Read and write**.
+3. Generate and copy the token (starts with `github_pat_`).
 
-> `.gitignore` already excludes `.env` and `data/users.json`, so your secrets and user list never reach GitHub. Keep it that way.
+> **Contents** is the permission git uses. Not "Repository security advisories", not anything else. Without it you get `403 Write access to repository not granted` even though the token authenticates fine.
 
-### 3c. You'll clone on the VPS in Part 4 using the same token.
+> `.gitignore` already excludes `.env` and `data/users.json`, so your secrets and subscriber list never reach GitHub. Keep it that way.
 
 ---
 
@@ -159,35 +105,32 @@ Any VPS works (DigitalOcean, Vultr, etc.) — Hetzner is one of the cheapest rel
 
 ### 4a. Create the server
 
-1. Go to **https://www.hetzner.com/cloud** → **Sign up** (ID verification may be requested on new accounts — normal).
-2. In the **Cloud Console** (https://console.hetzner.cloud) → **New project** → name it `daily-brief` → open it → **Add server**.
+1. **https://www.hetzner.com/cloud** → **Sign up** (ID verification may be requested on new accounts — normal).
+2. **Cloud Console** → **New project** → name it `daily-brief` → **Add server**.
 3. Choose:
    - **Location:** Falkenstein or Nuremberg (Germany)
    - **Image:** Ubuntu 24.04
-   - **Type:** Shared vCPU → **CX23** (~€5.49/month) — smallest is plenty for this app
+   - **Type:** Shared vCPU → **CX23** (~€5.49/month)
    - **Networking:** leave Public IPv4 checked
-   - **SSH key:** skip for now (we'll use the root password) — or add one if you already have it
-4. Click **Create & buy now**. In ~30 seconds you get a server with a **public IP** (e.g. `95.216.x.x`). If you skipped the SSH key, the root password arrives by email.
+4. **Create & buy now**. You get a public IP; if you skipped the SSH key, the root password arrives by email.
 
 ### 4b. Open the firewall for port 3580
 
-1. In the Hetzner console: **Firewalls → Create firewall**, name `daily-brief-fw`.
+1. **Firewalls → Create firewall**, name `daily-brief-fw`.
 2. Inbound rules:
    - TCP, port **22**, source `0.0.0.0/0, ::/0` (SSH)
-   - TCP, port **3580**, source `0.0.0.0/0, ::/0` (the app + Twilio webhook)
+   - TCP, port **3580**, source `0.0.0.0/0, ::/0` (the registration page)
 3. **Apply to** → select your server → create.
 
 ### 4c. Connect from Windows
-
-PowerShell has SSH built in:
 
 ```powershell
 ssh root@YOUR_VPS_IP
 ```
 
-Type `yes` to trust the host, enter the root password from the email (Hetzner will make you change it on first login).
+If the session keeps dropping when idle, add `-o ServerAliveInterval=60`.
 
-### 4d. Install Node.js and pm2 (run these on the VPS)
+### 4d. Install Node.js and pm2 (on the VPS)
 
 ```bash
 apt update && apt upgrade -y
@@ -213,61 +156,54 @@ nano .env
 
 The `set-url` line removes the token from `.git/config`, where cloning writes it in cleartext. Later `git pull`s will then ask for auth again — re-add the token to the URL when deploying, or set up a read-only deploy key.
 
-> Replace **`YOUR_TOKEN`** and **`YOUR_USERNAME`** with real values. Anything in `CAPS_WITH_UNDERSCORES` in this guide is a fill-in-the-blank — pasting it literally creates a remote pointing at a repository that does not exist.
+> Replace **`YOUR_TOKEN`** and **`YOUR_USERNAME`** with real values. Anything in `CAPS_WITH_UNDERSCORES` in this guide is a fill-in-the-blank.
 >
 > Chain the commands with `&&` as shown. Newline-separated commands each run regardless of whether the previous one failed, so one broken clone produces a cascade of unrelated errors that hides the real cause.
 
-In nano, fill in the real values (Anthropic key, Twilio SID/token). Check that `PORT=3580` and `TIMEZONE=Asia/Jerusalem`. Save with **Ctrl+O**, Enter, exit with **Ctrl+X**.
+In nano, fill in the Anthropic key and the Gmail App Password. Check that `PORT=3580` and `TIMEZONE=Asia/Jerusalem`. Save with **Ctrl+O**, Enter, exit with **Ctrl+X**.
 
-### 4f. Start it 24/7
+### 4f. Verify mail before anything else
+
+```bash
+npm run check-mail -- you@gmail.com
+```
+
+### 4g. Start it 24/7
 
 ```bash
 pm2 start src/server.js --name daily-brief
 pm2 save
 pm2 startup    # prints one command — copy/paste and run it (auto-start on reboot)
-pm2 logs daily-brief   # watch it live; Ctrl+C to stop watching (app keeps running)
+pm2 logs daily-brief
 ```
 
-### 4g. Verify
+### 4h. Verify
 
-1. On your laptop, open **http://YOUR_VPS_IP:3580** — the registration page should load from anywhere.
-2. Register yourself and click **Send brief now** — the brief should reach your WhatsApp in ~1 minute (remember: you must have joined the sandbox, step 2b).
-3. Now do Part 2c (point the Twilio webhook at `http://YOUR_VPS_IP:3580/webhook/whatsapp`) and send `STATUS` from WhatsApp.
-4. Done — the 08:00 push now runs regardless of your laptop.
+1. Open **http://YOUR_VPS_IP:3580** — the registration page loads from anywhere.
+2. Register yourself and click **Send brief now** — the email arrives in ~1 minute.
+3. Done — the 08:00 push now runs regardless of your laptop.
+
+To test the schedule without waiting for morning: set `DAILY_HOUR` to the next hour, `pm2 restart daily-brief`, watch for `[scheduler] HH:00 — starting daily send`, then set it back to `8`.
 
 ---
 
-## Troubleshooting: nothing arrives on WhatsApp
+## Troubleshooting: no email arrives
 
-Work top-down. The log line from `pm2 logs daily-brief` (or `npm run send-now`) tells you which case you are in.
+Read the log line from `pm2 logs daily-brief`.
 
-| Log line | Meaning | Fix |
+| Log line | Cause | Fix |
 |---|---|---|
-| `error: ContentSid Required` (code **21654**) | Production sender, no template — business-initiated sends need one | Have the user message the bot first, or finish 2e step 2 |
-| `outside 24h window and no template configured` | Same cause, correctly detected | Set `TWILIO_CONTENT_SID` — see 2e |
-| `window closed — template sent, waiting for user reply` | Working as designed | User replies `GET` to receive the brief |
-| `error: brief generation failed — ...` | Anthropic side, not Twilio | Check `ANTHROPIC_API_KEY` and credit balance |
-| `No Twilio trial phone number is assigned...verified recipient` | Account still on trial — recipient not verified | Verify the number, or upgrade the account (below) |
-| `Twilio credentials missing` | `.env` not loaded | Confirm `.env` sits next to `package.json` |
-| `No user registered with +...` | Number not in `data/users.json` | Register via the web page, or seed the file |
-| `Brief sent to ... (6 messages)` | Twilio **accepted** it | The problem is delivery — see below |
+| `SMTP credentials missing` | `.env` not loaded | Confirm `.env` sits next to `package.json` |
+| `Invalid login` / `535` | Wrong App Password, or you used the account password | Regenerate the App Password, paste without spaces |
+| `Missing credentials for "PLAIN"` | `SMTP_USER` or `SMTP_PASS` empty | Fill both in `.env`, restart |
+| `self signed certificate` | Corporate proxy intercepting TLS | Use port 587, or a different network |
+| `error: brief generation failed` | Anthropic side, not mail | Check `ANTHROPIC_API_KEY` and credit balance |
+| `No user registered with ...` | Address not in `data/users.json` | Register on the page |
+| `Brief sent to ... (6 sections)` | Sent successfully | Check spam; add the sender to contacts |
 
-**If the log says sent but the phone shows nothing**, Twilio accepted the API call and failed to deliver. Twilio Console → **Monitor → Logs → Messaging** is authoritative: find the message and read its status.
+**If mail sends but never arrives**, it's almost always the spam folder on the first send. Gmail sending to itself is usually clean, but a brand-new sending pattern can still get filed. Mark it "not spam" once and it sticks.
 
-- `delivered` — it arrived; check the phone's archived chats and that you're looking at the right WhatsApp account
-- `undelivered` / `failed` — open the message and read the error code
-- `sent` and stuck — usually a sandbox recipient who never joined
-
-Most common causes, in order:
-
-1. **The recipient never joined the sandbox.** Every number must send `join <code>` to +1 415 523 8886 from its own phone — including yours. Without it Twilio may accept the call and silently drop the message.
-2. **The 72-hour sandbox expiry.** Sandbox joins lapse after 72 hours of inactivity and must be redone. This bites regularly during testing.
-3. **Trial-account restriction.** An unupgraded Twilio trial only sends to *verified* numbers — Console → **Phone Numbers → Manage → Verified Caller IDs → Add a new Caller ID**. Twilio calls or texts a 6-digit code to that number; enter it to verify.
-   **This does not scale.** Every one of your 10 users would have to be verified individually, and trial credit is capped. Upgrade the account (Console → **Billing → Upgrade**, add a payment method) before going live — it removes the restriction entirely and is a prerequisite for the 08:00 push reaching anyone who isn't you.
-4. **Wrong `TWILIO_WHATSAPP_FROM`.** Needs the `whatsapp:` prefix and E.164 form: `whatsapp:+14155238886`.
-5. **Number format.** `data/users.json` stores E.164 with no `whatsapp:` prefix — `+972501234567`. The prefix is added in code.
-
-> A Twilio API error means **no message was ever created** — nothing to find in the logs and nothing could have arrived. That is a different failure from an accepted-but-undelivered message, and it is the one to rule out first.
+---
 
 ## Everyday operations cheat sheet
 
@@ -276,12 +212,14 @@ Most common causes, in order:
 | See logs | VPS | `pm2 logs daily-brief` |
 | Restart app | VPS | `pm2 restart daily-brief` |
 | App status / uptime | VPS | `pm2 status` |
+| Check mail login only | VPS | `npm run check-mail` |
 | Deploy a code change | laptop → VPS | laptop: `git push` · VPS: `cd /opt/whatsapp-daily-brief && git pull && npm install && pm2 restart daily-brief` |
-| Test a send immediately | VPS | `npm run send-now` |
-| Back up users | VPS | copy `/opt/whatsapp-daily-brief/data/users.json` |
+| Send a brief immediately | VPS | `npm run send-now` |
+| Back up subscribers | VPS | copy `/opt/whatsapp-daily-brief/data/users.json` |
 
 ## Security notes (worth 5 minutes)
 
-- The registration page is open to the internet on port 3580 and has no login — anyone with the IP could register numbers. For personal use, obscurity + the 10-user cap is usually fine, but consider adding basic auth (good Cursor task) or restricting the Hetzner firewall's 3580 rule to your own IP once everyone is registered (note: Twilio's webhook still needs access — you can list Twilio's IP ranges or keep the port open and add auth to the page only).
-- Never commit `.env`. If a key leaks, revoke it in the Anthropic/Twilio console and create a new one.
-- Optional upgrade: put a free domain (e.g. DuckDNS) + Caddy in front for HTTPS. Not required — Twilio accepts `http://` webhooks — but nicer.
+- The registration page is open to the internet on port 3580 and has no login — anyone with the IP could subscribe an address. For personal use, obscurity plus the 10-user cap is usually fine, but consider adding basic auth or restricting the Hetzner firewall's 3580 rule to your own IP once everyone is registered.
+- Never commit `.env`. If a key leaks, revoke it: Anthropic keys in their console, Gmail App Passwords at **myaccount.google.com/apppasswords** (deleting the entry kills it instantly).
+- An App Password grants mail-sending access to your Google account. It is safer than your real password — revocable, single-purpose — but still treat it as a secret.
+- Optional upgrade: put a free domain (e.g. DuckDNS) + Caddy in front for HTTPS on the registration page.

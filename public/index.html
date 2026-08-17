@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The 08:00 Brief — Daily Country Brief on WhatsApp</title>
+<title>The 08:00 Brief — Daily Country Brief by email</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -157,7 +157,7 @@
     <h1>The <span class="clock">08:00</span> Brief</h1>
   </header>
   <p class="tagline">
-    Pick a country, get a WhatsApp briefing every morning: fresh news, the nearest holiday,
+    Pick a country, get a briefing in your inbox every morning: fresh news, the nearest holiday,
     a mini language lesson, geography, and real prices in the capital. Change country any time.
   </p>
 
@@ -172,16 +172,16 @@
       <div class="row"><div class="t">08:01</div><div class="what"><strong>🗺️ Geography</strong><span>A few sentences on the land, the climate, one surprise</span></div></div>
       <div class="row"><div class="t">08:02</div><div class="what"><strong>💰 Prices in the capital</strong><span>Coffee · restaurant · apartment rent · a car</span></div></div>
       <p class="note">
-        From WhatsApp you can always reply <code>STATUS</code> to get the brief again,
-        or <code>COUNTRY Italy</code> to switch.
+        One email, six sections. Use <code>Send brief now</code> below to get it on demand,
+        or <code>Change country</code> to switch.
       </p>
     </aside>
 
     <div>
       <!-- registration -->
       <section class="card" aria-labelledby="reg-title">
-        <h2 id="reg-title">Subscribe a number</h2>
-        <p class="sub">One country per number. Registering an existing number updates its country.</p>
+        <h2 id="reg-title">Subscribe an address</h2>
+        <p class="sub">One country per address. Registering an existing address updates its country.</p>
 
         <label for="name">Name</label>
         <input id="name" placeholder="Inigo" autocomplete="name">
@@ -190,9 +190,9 @@
         <input id="country" placeholder="Greece">
         <p class="hint">Any country — the brief adapts to its language, holidays and capital.</p>
 
-        <label for="whatsapp">WhatsApp number</label>
-        <input id="whatsapp" placeholder="+972501234567" inputmode="tel" autocomplete="tel">
-        <p class="hint">International format, starting with “+”.</p>
+        <label for="email">Email address</label>
+        <input id="email" type="email" placeholder="you@gmail.com" inputmode="email" autocomplete="email">
+        <p class="hint">The brief arrives here every morning at 08:00.</p>
 
         <button class="primary" id="registerBtn">Start my daily brief</button>
         <div class="flash" id="regFlash" role="status"></div>
@@ -201,7 +201,7 @@
       <!-- registered users -->
       <section class="card" aria-labelledby="users-title">
         <h2 id="users-title">Subscribers <span class="count" id="count"></span></h2>
-        <p class="sub">Send a brief on demand, switch a country, or remove a number.</p>
+        <p class="sub">Send a brief on demand, switch a country, or remove an address.</p>
         <div id="userList"><p class="empty">Loading…</p></div>
       </section>
     </div>
@@ -237,11 +237,11 @@ $("registerBtn").addEventListener("click", async () => {
       body: JSON.stringify({
         name: $("name").value,
         country: $("country").value,
-        whatsapp: $("whatsapp").value,
+        email: $("email").value,
       }),
     });
     flash($("regFlash"), data.message, true);
-    $("name").value = ""; $("country").value = ""; $("whatsapp").value = "";
+    $("name").value = ""; $("country").value = ""; $("email").value = "";
     loadUsers();
   } catch (err) {
     flash($("regFlash"), err.message, false);
@@ -272,7 +272,7 @@ async function loadUsers() {
           <button class="remove" data-act="remove">Remove</button>
         </div>
         <div class="meta">
-          ${escapeHtml(u.whatsapp)} · last sent: ${u.lastSentAt ? new Date(u.lastSentAt).toLocaleString() : "never"}${u.lastStatus ? " · " + escapeHtml(u.lastStatus) : ""}
+          ${escapeHtml(u.email)} · last sent: ${u.lastSentAt ? new Date(u.lastSentAt).toLocaleString() : "never"}${u.lastStatus ? " · " + escapeHtml(u.lastStatus) : ""}
         </div>
       </div>
     `).join("");

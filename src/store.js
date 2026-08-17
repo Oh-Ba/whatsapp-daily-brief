@@ -10,7 +10,7 @@
  *   id:         "u_ab12cd34",
  *   name:       "Inigo",
  *   country:    "Greece",
- *   whatsapp:   "+9725XXXXXXX",   // E.164, no "whatsapp:" prefix
+ *   email:      "inigo@example.com",   // lowercase
  *   createdAt:  ISO string,
  *   lastSentAt: ISO string | null,
  *   lastStatus: "ok" | "error: ..." | "pending" | null
@@ -42,14 +42,13 @@ function save(users) {
   fs.renameSync(tmp, DATA_FILE); // atomic on the same volume
 }
 
-/** Normalize a phone number to E.164-ish: keep digits, ensure leading "+". */
-export function normalizePhone(raw) {
-  const digits = String(raw || "").replace(/[^\d+]/g, "");
-  if (!digits) return null;
-  const clean = digits.startsWith("+") ? "+" + digits.slice(1).replace(/\D/g, "") : "+" + digits.replace(/\D/g, "");
-  // Very light validation: 8–15 digits after the +
-  const n = clean.slice(1);
-  if (n.length < 8 || n.length > 15) return null;
+/** Normalize an email: trim + lowercase. Returns null if it isn't one. */
+export function normalizeEmail(raw) {
+  const clean = String(raw || "").trim().toLowerCase();
+  if (!clean) return null;
+  // Deliberately light: one @, something either side, a dot in the domain.
+  if (!/^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(clean)) return null;
+  if (clean.length > 254) return null;
   return clean;
 }
 
@@ -66,23 +65,23 @@ export const store = {
     return load().find((u) => u.id === id) || null;
   },
 
-  findByPhone(phone) {
-    const p = normalizePhone(phone);
-    return load().find((u) => u.whatsapp === p) || null;
+  findByEmail(email) {
+    const e = normalizeEmail(email);
+    return load().find((u) => u.email === e) || null;
   },
 
   /**
-   * Register a new user, or update the country/name if the phone
-   * number is already registered (one registration per number).
+   * Register a new user, or update the country/name if the address is
+   * already registered (one registration per address).
    */
-  upsert({ name, country, whatsapp }) {
-    const phone = normalizePhone(whatsapp);
-    if (!phone) throw new Error("Invalid WhatsApp number. Use international format, e.g. +972501234567");
+  upsert({ name, country, email }) {
+    const address = normalizeEmail(email);
+    if (!address) throw new Error("Invalid email address, e.g. you@gmail.com");
     if (!name?.trim()) throw new Error("Name is required");
     if (!country?.trim()) throw new Error("Country is required");
 
     const users = load();
-    const existing = users.find((u) => u.whatsapp === phone);
+    const existing = users.find((u) => u.email === address);
 
     if (existing) {
       existing.name = name.trim();
@@ -99,7 +98,7 @@ export const store = {
       id: "u_" + crypto.randomBytes(4).toString("hex"),
       name: name.trim(),
       country: country.trim(),
-      whatsapp: phone,
+      email: address,
       createdAt: new Date().toISOString(),
       lastSentAt: null,
       lastStatus: null,
@@ -119,9 +118,9 @@ export const store = {
     return user;
   },
 
-  setCountryByPhone(phone, country) {
-    const user = this.findByPhone(phone);
-    if (!user) throw new Error("This number is not registered");
+  setCountryByEmail(email, country) {
+    const user = this.findByEmail(email);
+    if (!user) throw new Error("This address is not registered");
     return this.setCountry(user.id, country);
   },
 

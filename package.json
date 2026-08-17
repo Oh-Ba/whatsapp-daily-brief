@@ -1,7 +1,7 @@
 {
-  "name": "whatsapp-daily-brief",
-  "version": "1.0.0",
-  "description": "24/7 agent that sends a daily country brief (news, holidays, language lesson, geography, prices) to users on WhatsApp at 08:00",
+  "name": "daily-brief",
+  "version": "2.0.0",
+  "description": "24/7 agent that emails a daily country brief (news, holidays, language lesson, geography, prices) at 08:00",
   "main": "src/server.js",
   "type": "module",
   "engines": {
@@ -10,12 +10,13 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "send-now": "node src/send-now.js"
+    "send-now": "node src/send-now.js",
+    "check-mail": "node src/check-mail.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "node-cron": "^3.0.3",
-    "twilio": "^5.3.0"
+    "nodemailer": "^6.9.14"
   }
 }

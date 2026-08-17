@@ -5,7 +5,7 @@
 
 import cron from "node-cron";
 import { config } from "./config.js";
-import { sendBriefToAll } from "./whatsapp.js";
+import { sendBriefToAll } from "./mailer.js";
 
 export function startScheduler() {
   const expression = `0 ${config.dailyHour} * * *`; // minute 0 of DAILY_HOUR, daily

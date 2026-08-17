@@ -3,10 +3,10 @@
  *
  * One call to the Anthropic Messages API with the web_search tool enabled.
  * Claude searches the web for fresh news / upcoming holidays / current
- * prices, then writes the whole brief in a WhatsApp-friendly format.
+ * prices, then writes the whole brief in six sections.
  *
- * The brief is returned as an ARRAY of message strings — one per section —
- * so WhatsApp receives 6 tidy messages instead of one giant wall of text.
+ * The brief is returned as an ARRAY of section strings. mailer.js turns
+ * each one into a card in the morning email.
  *
  * API reference: https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool
  */
@@ -27,7 +27,7 @@ function buildPrompt(user) {
   return `You are "Daily Country Brief", a friendly morning-briefing writer.
 Today is ${today}. The reader is ${user.name}. The country of interest is: ${user.country}.
 
-Use web search to find CURRENT information (today's news, the actual nearest holiday, up-to-date prices). Then write a WhatsApp morning brief with EXACTLY these 6 parts, in this order, separated by the literal delimiter line ${SECTION_DELIMITER} (on its own line, nothing else on that line):
+Use web search to find CURRENT information (today's news, the actual nearest holiday, up-to-date prices). Then write a morning email brief with EXACTLY these 6 parts, in this order, separated by the literal delimiter line ${SECTION_DELIMITER} (on its own line, nothing else on that line):
 
 PART 1 — GREETING + NEWS 📰
 Start with "Good morning ${user.name}! ☀️ Your ${user.country} brief for ${today}".
@@ -55,11 +55,11 @@ Current average prices in the capital of ${user.country}, in local currency AND 
 - 🚗 New economy car (e.g. VW Golf class or local equivalent)
 
 PART 6 — SIGN-OFF
-One short, warm closing line + remind: "Reply STATUS to get this brief again, or COUNTRY <name> to switch country."
+One short, warm closing line. Do not add any instructions about replying — this is a one-way email.
 
 STYLE RULES (important):
-- WhatsApp formatting only: *bold* with single asterisks, _italics_ with underscores. NO markdown headers (#), NO markdown links, NO tables.
-- Each PART must be under 1000 characters (WhatsApp splits long messages badly).
+- The FIRST LINE of each part is its heading — keep it short, it becomes the section title.
+- Emphasis: *bold* with single asterisks, _italics_ with underscores. NO markdown headers (#), NO markdown links, NO tables.
 - Plain, warm, concise language. Emojis welcome but not excessive.
 - Do NOT include citations, URLs, or source names in the text.
 - Output ONLY the brief itself: no preamble, no explanation of what you did.`;
@@ -67,7 +67,7 @@ STYLE RULES (important):
 
 /**
  * Call the Anthropic Messages API (with web search) and return
- * an array of WhatsApp-ready message strings.
+ * an array of section strings, one per PART.
  */
 export async function generateBrief(user) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -108,31 +108,11 @@ export async function generateBrief(user) {
 
   if (!fullText) throw new Error("Empty response from Anthropic API");
 
-  // Split into the 6 parts, then hard-wrap anything still too long
-  // (Twilio WhatsApp body limit is 1600 chars).
+  // Email has no length limit, so the sections go out as written.
   const parts = fullText
     .split(SECTION_DELIMITER)
     .map((p) => p.trim())
     .filter(Boolean);
 
-  const messages = [];
-  for (const part of parts) {
-    if (part.length <= 1500) {
-      messages.push(part);
-    } else {
-      // Split on paragraph boundaries into <=1500-char chunks
-      let chunk = "";
-      for (const para of part.split("\n\n")) {
-        if ((chunk + "\n\n" + para).length > 1500 && chunk) {
-          messages.push(chunk.trim());
-          chunk = para;
-        } else {
-          chunk = chunk ? chunk + "\n\n" + para : para;
-        }
-      }
-      if (chunk.trim()) messages.push(chunk.trim());
-    }
-  }
-
-  return messages;
+  return parts.length ? parts : [fullText];
 }

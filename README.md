@@ -1,170 +1,152 @@
-# The 08:00 Brief — Daily Country Brief on WhatsApp
+# The 08:00 Brief — Daily Country Brief by email
 
-A 24/7 agent that sends every subscriber, each morning at 08:00, a WhatsApp briefing about the country they chose:
+A 24/7 agent that emails every subscriber, each morning at 08:00, a briefing about the country they chose:
 
-1. 📰 News — politics, economics, technology, culture, crime + one interesting story
-2. 🎉 The nearest holiday — what it is, its ceremonies, and what's unique about it in that country
-3. 🗣️ A short everyday dialogue in the local language (café, taxi, shopping, directions, small talk — a different scenario each day)
-4. 🗺️ A few sentences about the country's geography
-5. 💰 Average prices in the capital: coffee, restaurant, apartment rent, a car
+- 📰 **News** — politics, economics, tech, culture, crime, and one curiosity
+- 🎉 **Nearest holiday** — what it means, its ceremonies, how it's celebrated locally
+- 🗣️ **Language corner** — a short everyday dialogue with transliteration and translation
+- 🗺️ **Geography** — the land, the climate, one surprise
+- 💰 **Prices in the capital** — coffee, a meal for two, rent, a car
 
-Up to **10 users simultaneously**, each with their own country. A web page handles registration (name, country, WhatsApp number). From WhatsApp, users can reply `STATUS` to get the brief on demand or `COUNTRY <name>` to switch countries.
+Up to **10 subscribers simultaneously**, each with their own country. A web page handles registration (name, country, email) and day-to-day management: send on demand, switch country, unsubscribe.
 
-Content is generated fresh each morning by the **Claude API with web search** (so news, holidays, and prices are current), and delivered through the **Twilio WhatsApp API**.
+Content is generated fresh each morning by the **Claude API with web search** (so news, holidays, and prices are current) and delivered over **SMTP**.
 
 ---
 
 ## Architecture
 
 ```
-┌────────────────┐        ┌─────────────────────────────────────┐
-│ Registration   │  HTTP  │  Node.js server (Express)           │
-│ page (browser) ├───────►│                                     │
-└────────────────┘        │  • node-cron: fires daily at 08:00  │
-                          │  • brief.js: Claude API + web search│
-┌────────────────┐        │  • whatsapp.js: Twilio sender       │
-│ User's WhatsApp│◄───────┤  • store.js: data/users.json        │
-│                ├───────►│  • /webhook/whatsapp: STATUS,       │
-└────────────────┘ Twilio │    COUNTRY, HELP commands           │
-                  webhook └─────────────────────────────────────┘
+┌─────────────┐        ┌──────────────────────────────────────┐
+│  Web page   ├───────►│  Express server (port 3580)          │
+│ (register)  │        │  • scheduler.js: node-cron @ 08:00   │
+└─────────────┘        │  • brief.js: Claude API + web search │
+                       │  • mailer.js: Nodemailer / SMTP      │
+┌─────────────┐        │  • store.js: data/users.json         │
+│  Your inbox │◄───────┤                                      │
+└─────────────┘  SMTP  └──────────────────────────────────────┘
 ```
 
-| File | Responsibility |
+| File | Role |
 |---|---|
-| `src/server.js` | Entry point — Express app + scheduler start |
-| `src/scheduler.js` | Cron job at `DAILY_HOUR` in `TIMEZONE` |
-| `src/brief.js` | Builds the prompt, calls the Claude API (web search enabled), splits the result into WhatsApp-sized messages |
-| `src/whatsapp.js` | Sends via Twilio; handles the WhatsApp 24-hour window |
-| `src/routes.js` | Web API + Twilio inbound webhook |
-| `src/store.js` | JSON-file user store (max 10 users) |
-| `src/send-now.js` | CLI test: `npm run send-now` |
-| `public/index.html` | Registration page |
+| `src/server.js` | Entry point: static page, API, scheduler |
+| `src/scheduler.js` | Fires the daily send at `DAILY_HOUR` in `TIMEZONE` |
+| `src/brief.js` | Builds the prompt, calls the Claude API (web search enabled), splits the result into 6 sections |
+| `src/mailer.js` | Renders the sections into one HTML email and sends it |
+| `src/routes.js` | Web API used by the registration page |
+| `src/store.js` | `data/users.json` persistence (atomic writes) |
+| `src/send-now.js` | Manual trigger for testing |
+| `src/check-mail.js` | SMTP login check — free, no Anthropic call |
+| `public/index.html` | Self-contained registration page |
 
 ---
 
-## Setup (Windows, ~15 minutes)
+## Quick start (local)
 
-> Deploying to a VPS so it runs 24/7 without your laptop? Follow **DEPLOYMENT.md** instead — it covers Anthropic, Twilio, GitHub, and the VPS step by step.
+> Deploying to a VPS so it runs 24/7 without your laptop? Follow **DEPLOYMENT.md** — it covers Anthropic, Gmail, GitHub, and the VPS step by step.
 
-### 1. Prerequisites
+### 1. Install
 
-- **Node.js 18+** — check with `node -v`, install from https://nodejs.org if needed.
-
-### 2. Install
-
-Open the project folder (`C:\Work\whatsapp-daily-brief`) in Cursor, then in the terminal:
-
-```powershell
+```bash
 npm install
-copy .env.example .env
+cp .env.example .env
 ```
 
-### 3. Get an Anthropic API key
+### 2. Anthropic key
 
-1. Go to https://platform.claude.com → **API Keys** → create a key.
-2. Put it in `.env` as `ANTHROPIC_API_KEY`.
+Create one at https://platform.claude.com → **API Keys**, then put it in `.env`:
 
-> Cost estimate: one brief ≈ 5–8 web searches + a few thousand tokens. For 10 users daily, expect roughly a few dollars per month. Add credit in the console billing page.
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
-### 4. Set up Twilio WhatsApp (sandbox — free to test)
+### 3. Gmail App Password
 
-1. Create an account at https://www.twilio.com and copy your **Account SID** and **Auth Token** from the console dashboard into `.env`.
-2. In the console go to **Messaging → Try it out → Send a WhatsApp message**. You'll see the sandbox number (usually `+1 415 523 8886`) and a join code like `join brown-tiger`.
-3. **Every user** must send that join code once from their own WhatsApp to the sandbox number. That's how the sandbox authorizes recipients.
-4. Keep `TWILIO_WHATSAPP_FROM=whatsapp:+14155238886` in `.env`.
+Gmail rejects your normal password over SMTP. You need a 16-character **App Password**:
 
-### 5. Point the Twilio webhook at your server (for STATUS / COUNTRY commands)
+1. Turn on 2-Step Verification: https://myaccount.google.com/security
+2. Create the password: https://myaccount.google.com/apppasswords → name it `daily-brief`
+3. Google shows something like `abcd efgh ijkl mnop` — **remove the spaces**
 
-Twilio needs a public URL to deliver incoming WhatsApp messages:
+```
+SMTP_USER=you@gmail.com
+SMTP_PASS=abcdefghijklmnop
+```
 
-- **Local development:** run `ngrok http 3580` (https://ngrok.com), copy the https URL.
-- In the Twilio console, on the WhatsApp sandbox settings page, set **"When a message comes in"** to:
-  `https://<your-url>/webhook/whatsapp` (method: POST).
+Any other SMTP provider works too — set `SMTP_HOST` and `SMTP_PORT` (465 = implicit TLS, 587 = STARTTLS).
 
-The daily *push* works without the webhook — the webhook is only for the inbound commands.
+### 4. Check the mail path before spending anything
 
-### 6. Run
+```bash
+npm run check-mail                      # login only
+npm run check-mail -- you@gmail.com     # login + one-line test email
+```
 
-```powershell
+`SMTP login OK` means you're ready.
+
+### 5. Run
+
+```bash
 npm start
 ```
 
-Open http://localhost:3580, register yourself (name, country, WhatsApp number in `+…` format), then click **Send brief now** to test. Or from the terminal:
+Open http://localhost:3580, register yourself, then click **Send brief now**. Or from the terminal:
 
-```powershell
-npm run send-now
+```bash
+npm run send-now                        # everyone
+npm run send-now -- you@gmail.com       # one address
 ```
 
----
-
-## ⚠️ The WhatsApp 24-hour window (read this!)
-
-WhatsApp's rules (not Twilio's): a business may send **freeform messages only within 24 hours of the user's last message to it**. Outside that window, only **pre-approved template messages** may start a conversation.
-
-What this means for the 08:00 push:
-
-- **Sandbox / testing:** the push arrives as long as the user messaged the bot within the previous 24 h (e.g. replied `STATUS` or anything else yesterday). Otherwise Twilio rejects with error **63016** — the user can still pull the brief anytime by sending `STATUS`.
-- **Production (proper solution):**
-  1. Register your own WhatsApp sender in Twilio (business verification, ~1–3 days).
-  2. Create a **Content Template** in Twilio, e.g. *"Good morning! Your daily {{country}} brief is ready 🌍 Reply GET to receive it."* and get it approved.
-  3. Put its SID in `.env` as `TWILIO_CONTENT_SID`.
-
-  The app then automatically falls back to the template whenever the window is closed; the user's one-tap reply opens a fresh window and the webhook delivers the full brief.
+Generation takes 30–60 seconds — that's live web search, not a hang.
 
 ---
 
-## Running 24/7
+## Configuration
 
-The scheduler only fires while the process is running, so the machine (or host) must be on at 08:00.
-
-**Option A — your Windows PC with pm2 (simplest):**
-```powershell
-npm install -g pm2
-pm2 start src/server.js --name daily-brief
-pm2 save
-pm2 startup   # follow the printed instruction so it survives reboots
-```
-
-**Option B — a cloud host (recommended: survives your PC being off):**
-Deploy to Railway, Render, Fly.io, or any small VPS. You get a stable public URL too (no ngrok needed for the webhook). Note: on hosts with ephemeral disks, move `data/users.json` to a mounted volume or a small database.
-
----
-
-## WhatsApp commands (for users)
-
-| Command | Effect |
-|---|---|
-| `STATUS` (or `GET`, `BRIEF`) | Receive the full brief right now |
-| `COUNTRY Italy` | Switch to a new country |
-| `HELP` | List commands |
-
-## Web API
-
-| Method & path | Body | Effect |
+| Variable | Default | Meaning |
 |---|---|---|
-| `GET /api/users` | — | List subscribers (phones masked) |
-| `POST /api/register` | `{name, country, whatsapp}` | Register / update a number |
-| `POST /api/users/:id/country` | `{country}` | Change country |
+| `ANTHROPIC_API_KEY` | — | Required |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Model used for generation |
+| `SMTP_HOST` | `smtp.gmail.com` | Mail server |
+| `SMTP_PORT` | `465` | 465 = implicit TLS, 587 = STARTTLS |
+| `SMTP_USER` | — | Required — the sending address |
+| `SMTP_PASS` | — | Required — App Password, not your account password |
+| `MAIL_FROM` | `The 08:00 Brief <SMTP_USER>` | Display name on the From line |
+| `PORT` | `3580` | HTTP port |
+| `DAILY_HOUR` | `8` | Hour of the daily send |
+| `TIMEZONE` | `Asia/Jerusalem` | IANA timezone for the schedule |
+| `MAX_USERS` | `10` | Hard subscriber cap |
+
+---
+
+## API
+
+| Endpoint | Body | Purpose |
+|---|---|---|
+| `GET /api/users` | — | List subscribers (addresses masked) |
+| `POST /api/register` | `{name, country, email}` | Register / update an address |
+| `POST /api/users/:id/country` | `{country}` | Switch country |
 | `POST /api/users/:id/send` | — | Send the brief now |
-| `DELETE /api/users/:id` | — | Unregister |
+| `DELETE /api/users/:id` | — | Unsubscribe |
+| `GET /api/health` | — | SMTP reachability check |
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely cause / fix |
+| Symptom | Cause |
 |---|---|
-| Twilio error 63016 | Outside the 24-h window — see the section above |
-| Twilio error 21608 | Recipient hasn't joined the sandbox — send the `join …` code |
-| Anthropic 401 | Wrong/missing `ANTHROPIC_API_KEY` |
-| Anthropic 400 mentioning web search | Enable web search for your organization in the Claude console settings |
-| Brief never arrives at 08:00 | Process wasn't running, or `TIMEZONE` in `.env` doesn't match yours |
-| STATUS gets no reply | Webhook URL not set in Twilio, or ngrok tunnel expired |
+| `SMTP credentials missing` | `SMTP_USER` / `SMTP_PASS` not set in `.env` |
+| `Invalid login` / `535` | Used the account password instead of an App Password, or left the spaces in |
+| `Missing credentials for "PLAIN"` | One of the SMTP variables is empty |
+| `error: brief generation failed` | Anthropic key or credit — not a mail problem |
+| `No user registered with ...` | Address isn't in `data/users.json` |
+| Sends fine, nothing in the inbox | Check spam on the first send; mark "not spam" once |
 
-## Ideas for later (good Cursor tasks)
+**A note on cost:** the brief is generated *before* delivery is attempted, so every failed send still bills a full Anthropic call with web search. Use `npm run check-mail` to debug delivery — it's free.
 
-- Per-user timezone and send hour
-- Per-user language for the brief itself (not just the language corner)
-- A "history" page showing past briefs
-- Move the store to SQLite when you outgrow 10 users
-- Admin authentication on the registration page
+---
+
+## History
+
+v1 delivered over WhatsApp via Twilio. WhatsApp Business requires a Meta business account, identity verification, and Meta-approved templates for any business-initiated message — and a scheduled 08:00 brief is business-initiated by definition, so none of that was optional. v2 moved to email, which has no equivalent gate: no verification, no templates, no 24-hour reply window, no per-message cost.
