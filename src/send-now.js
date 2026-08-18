@@ -6,7 +6,7 @@
  */
 
 import { store } from "./store.js";
-import { sendBriefToAll, sendBriefToUser } from "./mailer.js";
+import { sendBriefToAll, sendBriefToUser, closeTransport } from "./mailer.js";
 
 const email = process.argv[2];
 
@@ -21,4 +21,5 @@ if (email) {
   await sendBriefToAll();
 }
 
+closeTransport();
 process.exit(0);

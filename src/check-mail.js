@@ -9,8 +9,7 @@
  */
 
 import { config, fromAddress } from "./config.js";
-import { verifyTransport } from "./mailer.js";
-import nodemailer from "nodemailer";
+import { verifyTransport, sendTestMail, closeTransport } from "./mailer.js";
 
 console.log(`host : ${config.smtpHost}:${config.smtpPort}`);
 console.log(`user : ${config.smtpUser || "(EMPTY)"}`);
@@ -23,24 +22,21 @@ try {
   console.log("SMTP login OK");
 } catch (err) {
   console.error("SMTP login FAILED:", err.message);
+  closeTransport();
   process.exit(1);
 }
 
 const to = process.argv[2];
 if (to) {
-  const transport = nodemailer.createTransport({
-    host: config.smtpHost,
-    port: config.smtpPort,
-    secure: config.smtpPort === 465,
-    auth: { user: config.smtpUser, pass: config.smtpPass },
-  });
-  const info = await transport.sendMail({
-    from: fromAddress(),
-    to,
-    subject: "The 08:00 Brief — test",
-    text: "If you are reading this, SMTP delivery works.",
-  });
-  console.log(`Test email sent to ${to} (${info.messageId})`);
+  try {
+    const info = await sendTestMail(to);
+    console.log(`Test email sent to ${to} (${info.messageId})`);
+  } catch (err) {
+    console.error("Test send FAILED:", err.message);
+    closeTransport();
+    process.exit(1);
+  }
 }
 
+closeTransport();
 process.exit(0);

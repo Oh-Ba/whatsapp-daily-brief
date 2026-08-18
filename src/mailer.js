@@ -28,6 +28,12 @@ function transport() {
       port: config.smtpPort,
       secure: config.smtpPort === 465, // 465 = implicit TLS, 587 = STARTTLS
       auth: { user: config.smtpUser, pass: config.smtpPass },
+      // Without these, a socket that never answers hangs the whole run:
+      // sendBriefToAll() awaits each user in turn, so one stuck connection
+      // stalls every subscriber after it.
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: 30000,
     });
   }
   return _transport;
@@ -37,6 +43,28 @@ function transport() {
 export async function verifyTransport() {
   await transport().verify();
   return true;
+}
+
+/** Send a one-line test message. Used by check-mail.js. */
+export async function sendTestMail(to) {
+  return transport().sendMail({
+    from: fromAddress(),
+    to,
+    subject: "The 08:00 Brief — test",
+    text: "If you are reading this, SMTP delivery works.",
+  });
+}
+
+/**
+ * Release the SMTP connection. Long-running processes don't need this
+ * (the server holds one transport for its lifetime), but one-shot CLI
+ * scripts must call it or Node keeps the socket handle open.
+ */
+export function closeTransport() {
+  if (_transport) {
+    _transport.close();
+    _transport = null;
+  }
 }
 
 function escapeHtml(s) {
