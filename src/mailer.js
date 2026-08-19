@@ -14,6 +14,7 @@ import nodemailer from "nodemailer";
 import { config, fromAddress } from "./config.js";
 import { generateBrief } from "./brief.js";
 import { store } from "./store.js";
+import { synthesize, cleanup } from "./tts.js";
 
 // Lazy init so the server can boot (and the page can be used)
 // even before SMTP credentials are configured in .env.
@@ -96,7 +97,7 @@ function sectionHtml(part) {
     </div>`;
 }
 
-function buildHtml(user, parts, dateLabel) {
+function buildHtml(user, parts, dateLabel, hasAudio) {
   return `<!doctype html>
 <html><body style="margin:0;padding:24px 12px;background:#edf3ee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;">
@@ -112,6 +113,13 @@ function buildHtml(user, parts, dateLabel) {
     </div>
 
     ${parts.map(sectionHtml).join("")}
+
+    ${hasAudio ? `<div style="background:#10322a;border-radius:12px;padding:16px 20px;margin:0 0 14px;">
+      <div style="font-size:13px;color:#f4a93c;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Listen instead</div>
+      <div style="font-size:14px;color:#eaf3ed;margin-top:5px;line-height:1.55;">
+        The whole brief is attached as an MP3. Open it from the attachment bar to hear it read aloud.
+      </div>
+    </div>` : ""}
 
     <div style="padding:14px 4px 4px;font-size:12.5px;color:#5c7269;line-height:1.6;">
       Change your country or unsubscribe on the brief page.
@@ -153,24 +161,32 @@ export async function sendBriefToUser(user) {
     timeZone: config.timezone,
   });
 
+  // Best-effort: a missing or broken voice must not hold up the brief.
+  const audio = await synthesize(parts, user, dateLabel);
+
   try {
     await transport().sendMail({
       from: fromAddress(),
       to: user.email,
       subject: `☀️ Your ${user.country} brief — ${dateLabel}`,
       text: parts.join("\n\n────────────────────\n\n"),
-      html: buildHtml(user, parts, dateLabel),
+      html: buildHtml(user, parts, dateLabel, Boolean(audio)),
+      attachments: audio
+        ? [{ filename: audio.filename, path: audio.path, contentType: "audio/mpeg" }]
+        : [],
     });
 
-    const status = "ok";
+    const status = audio ? "ok (with audio)" : "ok";
     store.markSent(user.id, status);
-    console.log(`[mailer] Brief sent to ${user.name} (${parts.length} sections)`);
+    console.log(`[mailer] Brief sent to ${user.name} (${parts.length} sections${audio ? " + audio" : ""})`);
     return status;
   } catch (err) {
     const status = `error: ${err.message}`;
     store.markSent(user.id, status);
     console.error(`[mailer] ${status}`);
     return status;
+  } finally {
+    cleanup(audio?.dir);
   }
 }
 

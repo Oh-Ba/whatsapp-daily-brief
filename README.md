@@ -8,6 +8,8 @@ A 24/7 agent that emails every subscriber, each morning at 08:00, a briefing abo
 - 🗺️ **Geography** — the land, the climate, one surprise
 - 💰 **Prices in the capital** — coffee, a meal for two, rent, a car
 
+Optionally the whole thing is attached as an **MP3 read aloud in a male voice**, synthesized locally — see DEPLOYMENT.md Part 5.
+
 Up to **10 subscribers simultaneously**, each with their own country. A web page handles registration (name, country, email) and day-to-day management: send on demand, switch country, unsubscribe.
 
 Content is generated fresh each morning by the **Claude API with web search** (so news, holidays, and prices are current) and delivered over **SMTP**.
@@ -37,6 +39,8 @@ Content is generated fresh each morning by the **Claude API with web search** (s
 | `src/store.js` | `data/users.json` persistence (atomic writes) |
 | `src/send-now.js` | Manual trigger for testing |
 | `src/check-mail.js` | SMTP login check — free, no Anthropic call |
+| `src/tts.js` | Renders the brief to MP3 with Piper (local, offline) |
+| `src/check-voice.js` | TTS chain check — free, no Anthropic call |
 | `public/index.html` | Self-contained registration page |
 
 ---
@@ -116,6 +120,11 @@ Generation takes 30–60 seconds — that's live web search, not a hang.
 | `DAILY_HOUR` | `8` | Hour of the daily send |
 | `TIMEZONE` | `Asia/Jerusalem` | IANA timezone for the schedule |
 | `MAX_USERS` | `10` | Hard subscriber cap |
+| `TTS_ENABLED` | `false` | Attach an MP3 of the brief read aloud |
+| `PIPER_MODEL` | — | Path to the `.onnx` voice model |
+| `PIPER_BIN` | `piper` | Piper executable |
+| `FFMPEG_BIN` | `ffmpeg` | ffmpeg executable |
+| `TTS_BITRATE` | `64k` | MP3 bitrate (mono) |
 
 ---
 

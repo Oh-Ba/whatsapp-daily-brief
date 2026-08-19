@@ -14,6 +14,7 @@ A 24/7 Node.js agent ("The 08:00 Brief") that emails up to 10 users a daily brie
 - **Storage:** `data/users.json` via `src/store.js` (atomic writes). Deliberately no database — the hard cap is 10 users. If asked to scale, swap only `store.js`.
 - **The brief format contract:** `brief.js` asks the model for 6 parts separated by the literal line `<<<SPLIT>>>`. The **first line of each part is its heading** — `mailer.js` renders it as the section title and the rest as the body. Keep the delimiter if you change the prompt.
 - **Email HTML is inline-styled on purpose.** Mail clients strip `<style>` blocks unpredictably. Every rule in `buildHtml()` lives on the element. Don't refactor it into a stylesheet.
+- **Spoken brief (optional).** `src/tts.js` renders the brief to MP3 with **Piper**, a local neural TTS, and `mailer.js` attaches it. Chosen over a cloud TTS deliberately: no account, no API key, no billing, nothing leaves the box. It is **best-effort** — if piper/ffmpeg/model are missing or fail, `synthesize()` returns `null`, the brief still sends, and the log says `[tts] Audio skipped`. Never let audio block mail.
 - **One-way channel.** Email has no inbound webhook, so there are no reply commands. Everything users could once do by replying (`STATUS`, `COUNTRY <name>`) is a button on the registration page.
 
 ## Conventions
@@ -28,6 +29,7 @@ A 24/7 Node.js agent ("The 08:00 Brief") that emails up to 10 users a daily brie
 ## Testing shortcuts
 
 - `npm run check-mail` — verify SMTP login, costs nothing.
+- `npm run check-voice` — verify the piper/ffmpeg chain and write a sample MP3, also free.
 - `npm run check-mail -- you@gmail.com` — verify and send a one-line test email.
 - `npm run send-now` — full brief to all users immediately.
 - `npm run send-now -- you@gmail.com` — full brief to one address.

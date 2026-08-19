@@ -187,6 +187,63 @@ To test the schedule without waiting for morning: set `DAILY_HOUR` to the next h
 
 ---
 
+## Part 5 — The spoken brief (optional)
+
+Attaches an MP3 of the brief read aloud in a male voice. It runs **entirely on your VPS** — Piper is a local neural TTS, so there is no account to create, no API key, no verification, and no per-use cost.
+
+### 5a. Install piper and ffmpeg
+
+```bash
+apt install -y ffmpeg python3-pip && pip install --break-system-packages piper-tts && piper --version
+```
+
+### 5b. Download a male voice
+
+```bash
+mkdir -p /opt/piper-voices && cd /opt/piper-voices && curl -fLO https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx && curl -fLO https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx.json && ls -lh
+```
+
+Both files are required — Piper reads the `.json` alongside the `.onnx`.
+
+Other male voices, same URL pattern: `en_US-joe-medium` (lighter, faster), `en_GB-alan-medium` (British). Browse them at https://huggingface.co/rhasspy/piper-voices.
+
+### 5c. Switch it on
+
+```bash
+cd /opt/whatsapp-daily-brief && sed -i 's|^TTS_ENABLED=.*|TTS_ENABLED=true|' .env && sed -i 's|^PIPER_MODEL=.*|PIPER_MODEL=/opt/piper-voices/en_US-ryan-high.onnx|' .env && grep -E '^(TTS_|PIPER_|FFMPEG_)' .env
+```
+
+If those keys are missing from an older `.env`, append them from `.env.example`.
+
+### 5d. Test the voice before spending a brief
+
+```bash
+npm run check-voice
+```
+
+This synthesizes a two-line sample and writes an MP3 to `/tmp`. It never calls Anthropic, so it costs nothing. Copy it off to listen:
+
+```bash
+scp root@YOUR_VPS_IP:/tmp/brief-portugal.mp3 .
+```
+
+Then restart so the running server picks up the new settings:
+
+```bash
+pm2 restart daily-brief && npm run send-now
+```
+
+The log line becomes `Brief sent to … (6 sections + audio)`.
+
+### 5e. Notes
+
+- **Audio never blocks the mail.** If piper or ffmpeg is missing, the model file is absent, or synthesis fails, the brief still sends — just without the attachment. The log says `[tts] Audio skipped — <reason>`.
+- **Size:** a 6-section brief is roughly 8–15 minutes of speech, about 4–7 MB at the default 64 kbps mono. Gmail's limit is 25 MB. Raise or lower with `TTS_BITRATE`.
+- **Time:** synthesis adds roughly 20–60 seconds on a CX23, on top of the 30–60 seconds of generation.
+- **CPU:** Piper is single-threaded and modest. `en_US-ryan-high` sounds best; switch to `en_US-joe-medium` if you want it faster.
+
+---
+
 ## Troubleshooting: no email arrives
 
 Read the log line from `pm2 logs daily-brief`.
@@ -200,6 +257,9 @@ Read the log line from `pm2 logs daily-brief`.
 | `error: brief generation failed` | Anthropic side, not mail | Check `ANTHROPIC_API_KEY` and credit balance |
 | `No user registered with ...` | Address not in `data/users.json` | Register on the page |
 | `Brief sent to ... (6 sections)` | Sent successfully | Check spam; add the sender to contacts |
+| `[tts] Audio skipped — piper could not start` | piper not installed or not on PATH | Part 5a, or set `PIPER_BIN` to the full path |
+| `[tts] PIPER_MODEL not found` | Voice model missing | Part 5b — you need both `.onnx` and `.onnx.json` |
+| `[tts] Audio skipped — ffmpeg exited` | ffmpeg missing or the WAV was empty | `apt install -y ffmpeg` |
 
 **If mail sends but never arrives**, it's almost always the spam folder on the first send. Gmail sending to itself is usually clean, but a brand-new sending pattern can still get filed. Mark it "not spam" once and it sticks.
 

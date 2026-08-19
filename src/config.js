@@ -21,6 +21,14 @@ export const config = {
   smtpPass: required("SMTP_PASS"),
   mailFrom: process.env.MAIL_FROM || "",
 
+  // Spoken version of the brief, attached as MP3. Off unless TTS_ENABLED
+  // is "true" — the brief must keep working on a box with no TTS installed.
+  ttsEnabled: String(process.env.TTS_ENABLED || "").toLowerCase() === "true",
+  piperBin: process.env.PIPER_BIN || "piper",
+  piperModel: process.env.PIPER_MODEL || "",
+  ffmpegBin: process.env.FFMPEG_BIN || "ffmpeg",
+  ttsBitrate: process.env.TTS_BITRATE || "64k",
+
   // App
   port: Number(process.env.PORT || 3580),
   dailyHour: Number(process.env.DAILY_HOUR || 8),
